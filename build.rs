@@ -18,12 +18,13 @@ fn main() {
 
     writeln!(
         f,
-        "pub const DICTIONARY: [(&str, usize); {}] = [",
+        "pub const DICTIONARY: [(Simd<u8, 8>, usize); {}] = [",
         words.len()
     )
     .unwrap();
     for (word, count) in words {
-        writeln!(f, "(\"{}\", {}),", word, count).unwrap();
+        let bytes = word.as_bytes();
+        writeln!(f, "(Simd::from_array([{}, {}, {}, {}, {}, 0, 0, 0]), {}),", bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], count).unwrap();
     }
     write!(f, "];").unwrap();
 }

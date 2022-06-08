@@ -1,4 +1,4 @@
-use roget::{Correctness, Guess};
+use roget::{Correctness, Guess, str_to_word};
 use std::borrow::Cow;
 
 const TESTS: &str = include_str!("../wordle-tests/data/tests.txt");
@@ -29,16 +29,16 @@ fn all() {
         assert_eq!(fields.count(), 0);
         let result = to_correctness(result);
         assert_eq!(
-            Correctness::compute(answer, guess),
+            Correctness::compute(&str_to_word(answer), &str_to_word(guess)),
             result,
             "guess {} against {}",
             guess,
             answer
         );
         assert!(Guess {
-            word: Cow::Borrowed(guess),
+            word: Cow::Owned(str_to_word(guess)),
             mask: result,
         }
-        .matches(answer));
+        .matches(&str_to_word(answer)));
     }
 }

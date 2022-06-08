@@ -1,5 +1,5 @@
 use clap::{ArgEnum, Parser};
-use roget::{Guesser, Solver};
+use roget::{Guesser, Solver, str_to_word};
 
 const GAMES: &str = include_str!("../answers.txt");
 
@@ -93,7 +93,7 @@ where
     let mut histogram = Vec::new();
     for answer in GAMES.split_whitespace().take(max.unwrap_or(usize::MAX)) {
         let guesser = (mk)();
-        if let Some(s) = w.play(answer, guesser) {
+        if let Some(s) = w.play(&str_to_word(answer), guesser) {
             games += 1;
             score += s;
             if s >= histogram.len() {
@@ -123,13 +123,15 @@ where
 
 #[cfg(test)]
 mod tests {
+    use roget::str_to_word;
+
     #[test]
     fn default_solver() {
         let w = roget::Wordle::new();
         let results: Vec<_> = crate::GAMES
             .split_whitespace()
             .take(20)
-            .filter_map(|answer| w.play(answer, roget::Solver::default()))
+            .filter_map(|answer| w.play(&str_to_word(answer), roget::Solver::default()))
             .collect();
 
         assert_eq!(

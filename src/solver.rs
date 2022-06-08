@@ -1,13 +1,13 @@
-use crate::{Correctness, Guess, Guesser, PackedCorrectness, DICTIONARY, MAX_MASK_ENUM};
+use crate::{Guess, Guesser, PackedCorrectness, DICTIONARY, MAX_MASK_ENUM, Word, str_to_word};
 use once_cell::sync::OnceCell;
 use once_cell::unsync::OnceCell as UnSyncOnceCell;
 use std::borrow::Cow;
 use std::cell::Cell;
 
 /// The initial set of words without any smoothing
-static INITIAL_COUNTS: OnceCell<Vec<(&'static str, f64, usize)>> = OnceCell::new();
+static INITIAL_COUNTS: OnceCell<Vec<(&'static Word, f64, usize)>> = OnceCell::new();
 /// The initial set of words after applying sigmoid smoothing.
-static INITIAL_SIGMOID: OnceCell<Vec<(&'static str, f64, usize)>> = OnceCell::new();
+static INITIAL_SIGMOID: OnceCell<Vec<(&'static Word, f64, usize)>> = OnceCell::new();
 
 /// A per-thread cache of cached `Correctness` for each word pair.
 ///
@@ -21,7 +21,7 @@ thread_local! {
 }
 
 pub struct Solver {
-    remaining: Cow<'static, Vec<(&'static str, f64, usize)>>,
+    remaining: Cow<'static, Vec<(&'static Word, f64, usize)>>,
     entropy: Vec<f64>,
     options: Options,
     last_guess_idx: Option<usize>,
@@ -167,7 +167,7 @@ impl Options {
                     for &(word, count) in DICTIONARY.iter().rev() {
                         let p = count as f64 / sum as f64;
                         println!(
-                            "{} {:.6}% -> {:.6}% ({})",
+                            "{:?} {:.6}% -> {:.6}% ({:?})",
                             word,
                             100.0 * p,
                             100.0 * sigmoid(p),
@@ -178,18 +178,16 @@ impl Options {
 
                 DICTIONARY
                     .iter()
-                    .copied()
                     .enumerate()
-                    .map(|(idx, (word, count))| (word, sigmoid(count as f64 / sum as f64), idx))
+                    .map(|(idx, (word, count))| (word, sigmoid(*count as f64 / sum as f64), idx))
                     .collect()
             })
         } else {
             INITIAL_COUNTS.get_or_init(|| {
                 DICTIONARY
                     .iter()
-                    .copied()
                     .enumerate()
-                    .map(|(idx, (word, count))| (word, count as f64, idx))
+                    .map(|(idx, (word, count))| (word, *count as f64, idx))
                     .collect()
             })
         };
@@ -247,15 +245,15 @@ impl Options {
 #[inline]
 fn get_packed(
     row: &[Cell<Option<PackedCorrectness>>],
-    guess: &str,
-    answer: &str,
+    guess: &Word,
+    answer: &Word,
     answer_idx: usize,
 ) -> PackedCorrectness {
     let cell = &row[answer_idx];
     match cell.get() {
         Some(a) => a,
         None => {
-            let correctness = PackedCorrectness::from(Correctness::compute(answer, guess));
+            let correctness = PackedCorrectness::compute(answer, guess);
             cell.set(Some(correctness));
             correctness
         }
@@ -269,7 +267,7 @@ impl Solver {
 }
 
 impl Solver {
-    fn trim(&mut self, mut cmp: impl FnMut(&str, usize) -> bool) {
+    fn trim(&mut self, mut cmp: impl FnMut(&Word, usize) -> bool) {
         if matches!(self.remaining, Cow::Owned(_)) {
             self.remaining
                 .to_mut()
@@ -287,7 +285,7 @@ impl Solver {
 }
 
 impl Guesser for Solver {
-    fn guess(&mut self, history: &[Guess]) -> String {
+    fn guess(&mut self, history: &[Guess]) -> Word {
         let score = history.len() as f64;
 
         if let Some(last) = history.last() {
@@ -308,17 +306,17 @@ impl Guesser for Solver {
             self.last_guess_idx = Some(
                 self.remaining
                     .iter()
-                    .find(|(word, _, _)| &**word == "tares")
+                    .find(|(word, _, _)| **word == str_to_word("tares"))
                     .map(|&(_, _, idx)| idx)
                     .unwrap(),
             );
             // NOTE: I did a manual run with this commented out and it indeed produced "tares" as
             // the first guess. It slows down the run by a lot though.
-            return "tares".to_string();
+            return str_to_word("tares");
         } else if self.options.rank_by == Rank::First || self.remaining.len() == 1 {
             let w = self.remaining.first().unwrap();
             self.last_guess_idx = Some(w.2);
-            return w.0.to_string();
+            return *w.0;
         }
         assert!(!self.remaining.is_empty());
 
@@ -366,7 +364,7 @@ impl Guesser for Solver {
             } else {
                 for (candidate, count, candidate_idx) in &*self.remaining {
                     in_remaining |= word_idx == *candidate_idx;
-                    let idx = PackedCorrectness::from(Correctness::compute(candidate, word));
+                    let idx = PackedCorrectness::compute(candidate, word);
                     totals[usize::from(u8::from(idx))] += count;
                 }
             }
@@ -425,7 +423,7 @@ impl Guesser for Solver {
         let best = best.unwrap();
         assert_ne!(best.goodness, 0.0);
         self.last_guess_idx = Some(best.idx);
-        best.word.to_string()
+        *best.word
     }
 
     fn finish(&self, guesses: usize) {
@@ -444,7 +442,7 @@ impl Guesser for Solver {
 
 #[derive(Debug, Copy, Clone)]
 struct Candidate {
-    word: &'static str,
+    word: &'static Word,
     goodness: f64,
     idx: usize,
 }
